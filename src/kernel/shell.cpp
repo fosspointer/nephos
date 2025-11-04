@@ -7,7 +7,7 @@ Shell::Shell()
         Command{
             .name = "version",
             .description = "Displays the current nephos version in use",
-            .procedure = [](const char* arguments, Vector<Variable>& variables)
+            .procedure = [](const char* arguments, Shell& shell)
             {
                 IO::putsln(Configuration::version);
                 return 0;
@@ -16,7 +16,7 @@ Shell::Shell()
         Command{
             .name = "colortest",
             .description = "Command to test IO output, scrolling and colors",
-            .procedure = [](const char* arguments, Vector<Variable>& variables)
+            .procedure = [](const char* arguments, Shell& shell)
             {
                 for(u32 i = 0; i < 0xff; ++i)
                 {
@@ -31,7 +31,7 @@ Shell::Shell()
         Command{
             .name = "echo",
             .description = "Print specified text to the screen",
-            .procedure = [](const char* arguments, Vector<Variable>& variables)
+            .procedure = [](const char* arguments, Shell& shell)
             {
                 IO::putsln(arguments);
                 return 0;
@@ -40,7 +40,7 @@ Shell::Shell()
         Command{
             .name = "meow",
             .description = "Meow",
-            .procedure = [](const char* arguments, Vector<Variable>& variables)
+            .procedure = [](const char* arguments, Shell& shell)
             {
                 IO::putsln("meow :3");
                 return 0;
@@ -49,7 +49,7 @@ Shell::Shell()
         Command{
             .name = "true",
             .description = "Command that exits successfully",
-            .procedure = [](const char* arguments, Vector<Variable>& variables)
+            .procedure = [](const char* arguments, Shell& shell)
             {
                 return 0;
             }
@@ -57,7 +57,7 @@ Shell::Shell()
         Command{
             .name = "false",
             .description = "Command that exits unsuccessfully",
-            .procedure = [](const char* arguments, Vector<Variable>& variables)
+            .procedure = [](const char* arguments, Shell& shell)
             {
                 return 1;
             }
@@ -65,7 +65,7 @@ Shell::Shell()
         Command{
             .name = "clear",
             .description = "Clears the screen",
-            .procedure = [](const char* arguments, Vector<Variable>& variables)
+            .procedure = [](const char* arguments, Shell& shell)
             {
                 IO::initScreen();
                 return 0;
@@ -74,7 +74,7 @@ Shell::Shell()
         Command{
             .name = "crash",
             .description = "Throws an invalid opcode exception to crash your system.",
-            .procedure = [](const char* arguments, Vector<Variable>& variables) -> int
+            .procedure = [](const char* arguments, Shell& shell) -> int
             {
                 __asm__("ud2");
                 __builtin_unreachable();
@@ -83,9 +83,9 @@ Shell::Shell()
         Command{
             .name = "printenv",
             .description = "Prints all of the environment variables.",
-            .procedure = [](const char* arguments, Vector<Variable>& variables)
+            .procedure = [](const char* arguments, Shell& shell)
             {
-                for(const auto& variable: variables)
+                for(const auto& variable: shell.getVariables())
                 {
                     IO::puts(variable.name);
                     IO::putc('=');
@@ -94,15 +94,29 @@ Shell::Shell()
                 return 0;
             }
         },
-        // Command{
-        //     .name = "repeat",
-        //     .description = "Executes a given command a specified number of times.",
-        //     .procedure = [](const char* arguments, Vector<Variable>& variables)
-        //     {
-        //         // executeCommand();
-        //         return 0;
-        //     }
-        // }
+        Command{
+            .name = "repeat",
+            .description = "Executes a given command a specified number of times.",
+            .procedure = [](const char* arguments, Shell& shell)
+            {
+                static char buffer[11];
+                buffer[10] = { 0 };
+                u8 i = 0;
+                while(i < 10 && (buffer[i] = *(arguments++)))
+                {
+                    if(buffer[i] < '0' || buffer[i] > '9') { break; }
+                    ++i;
+                }
+                for(;i < 10; ++i)
+                    buffer[i] = 0;
+                auto times = String(buffer).parseU32();
+                for(u32 i = 0; i < times; ++i)
+                {
+                    shell.executeCommand(arguments);
+                }
+                return 0;
+            }
+        }
     },
     m_variables{Variable{.name = "status", .value = "0"}}
 {}
@@ -196,7 +210,7 @@ i32 Shell::executeCommand(const char* raw_command)
     for(const auto& command: m_commands)
         if(stringEquals(command_buffer, command.name))
         {
-            auto exit_code = command.procedure(evaluated_command.getData(), m_variables);
+            auto exit_code = command.procedure(evaluated_command.getData(), *this);
             m_variables[0].value = String::fromI32(exit_code);
             return exit_code;
         }
